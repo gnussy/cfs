@@ -38,4 +38,9 @@ impl Inode {
             blkaddr,
         }
     }
+
+    #[inline(always)]
+    fn inodes_per_block(&self, block_size: u64) -> u64 {
+        block_size / std::mem::size_of::<Self>() as u64
+    }
 }
