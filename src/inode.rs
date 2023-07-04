@@ -1,7 +1,9 @@
+use deku::prelude::*;
+
 const BAD_INODE: u32 = 0;
 const ROOT_INODE: u32 = 1;
 
-#[repr(packed)]
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 struct Inode {
     mode: u16,
     nlinks: u16,

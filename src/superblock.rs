@@ -1,5 +1,7 @@
-#[repr(packed)]
-struct SuperBlock {
+use deku::prelude::*;
+
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+pub struct SuperBlock {
     magic: u32,
     blocksize: u32,
     bam_blocks: u32,
@@ -10,7 +12,7 @@ struct SuperBlock {
 }
 
 impl SuperBlock {
-    fn new(
+    pub fn new(
         magic: u32,
         blocksize: u32,
         bam_blocks: u32,

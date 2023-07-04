@@ -1,7 +1,8 @@
+use deku::prelude::*;
+
 const MAX_NAME_LEN: usize = 60;
 
-#[derive(Debug, Copy, Clone)]
-#[repr(packed)]
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 struct DirEntry {
     name: [u8; MAX_NAME_LEN],
     inode: u32,
