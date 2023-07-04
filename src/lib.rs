@@ -1,14 +1,6 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+const MAGIC: u32 = 0x0CF5B10C;
+const DEFAULT_BLOCK_SIZE: usize = 4096;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+mod dir_entry;
+mod inode;
+mod superblock;
