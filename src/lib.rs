@@ -8,6 +8,11 @@ pub fn bits_per_block(block_size: u64) -> u64 {
     block_size * 8
 }
 
+// ┌────────────┬─────────────────────────┬─────────────────────────┬────────────┬──────────────┬─────┬──────────────┐
+// │Super Block │ Block Allocation Bitmap │ Inode Allocation Bitmap │ Inode List │ Data Block 0 │ ... │ Data Block N │
+// └────────────┴─────────────────────────┴─────────────────────────┴────────────┴──────────────┴─────┴──────────────┘
+
 pub mod dir_entry;
 pub mod inode;
 pub mod superblock;
+pub mod bitmap;
