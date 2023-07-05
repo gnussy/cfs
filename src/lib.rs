@@ -20,9 +20,9 @@ pub mod superblock;
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 struct Cfs {
-    #[deku()]
     super_block: superblock::SuperBlock,
     bam: bitmap::Bitmap,
     iam: bitmap::Bitmap,
+    #[deku(ctx = "*super_block")]
     inode_list: inode::InodeList,
 }

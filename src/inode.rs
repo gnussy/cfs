@@ -1,7 +1,8 @@
+use crate::superblock;
 use deku::prelude::*;
 
-const BAD_INODE: u32 = 0;
-const ROOT_INODE: u32 = 1;
+pub const BAD_INODE: u32 = 0;
+pub const ROOT_INODE: u32 = 1;
 
 #[derive(Debug, Copy, Clone, PartialEq, DekuRead, DekuWrite)]
 pub struct Inode {
@@ -42,43 +43,39 @@ impl Inode {
     }
 
     #[inline(always)]
-    fn inodes_per_block(&self, block_size: u64) -> u64 {
+    pub fn inodes_per_block(&self, block_size: u64) -> u64 {
         block_size / std::mem::size_of::<Self>() as u64
     }
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[deku(ctx = "super_block: superblock::SuperBlock")]
 pub struct InodeList {
-    size: usize,
-    #[deku(count = "size")]
+    #[deku(count = "super_block.ninodes")]
     inodes: Vec<Option<Inode>>,
 }
 
 impl InodeList {
-pub fn new(size: usize) -> Self {
-    let inodes: Vec<Option<Inode>> = std::iter::repeat_with(|| {
-        Some(Inode::new(
-            0o040_755, // directory, rwxr-xr-x
-            2,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        ))
-    })
-    .take(2)
-    .chain(std::iter::repeat(None))
-    .take(size)
-    .collect();
+    pub fn new() -> Self {
+        let inodes: Vec<Option<Inode>> = std::iter::repeat_with(|| {
+            Some(Inode::new(
+                0o040_755, // directory, rwxr-xr-x
+                2,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ))
+        })
+        .take(2)
+        .chain(std::iter::repeat(None))
+        .collect();
 
-    Self {
-        size: 1024,
-        inodes,
+        Self { inodes }
     }
-}
 
     pub fn get(&self, index: usize) -> Option<Inode> {
         self.inodes[index]
@@ -95,6 +92,6 @@ pub fn new(size: usize) -> Self {
 
 impl Default for InodeList {
     fn default() -> Self {
-        Self::new(0)
+        Self::new()
     }
 }
