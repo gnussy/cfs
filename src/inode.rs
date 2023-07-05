@@ -13,7 +13,7 @@ pub struct Inode {
     atime: u32,
     mtime: u32,
     ctime: u32,
-    blkaddr: [u32; 9],
+    blkaddr: [u32; 10],
 }
 
 impl Inode {
@@ -26,7 +26,7 @@ impl Inode {
         atime: u32,
         mtime: u32,
         ctime: u32,
-        blkaddr: [u32; 9],
+        blkaddr: [u32; 10],
     ) -> Self {
         Self {
             mode,
@@ -47,32 +47,38 @@ impl Inode {
     }
 }
 
-type InodeEntry = Option<Inode>;
-
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-pub struct InodeList<const N: usize> {
-    inodes: [InodeEntry; N],
+pub struct InodeList {
+    size: usize,
+    #[deku(count = "size")]
+    inodes: Vec<Option<Inode>>,
 }
 
-impl<const N: usize> InodeList<N> {
-    pub fn new() -> Self {
-        let inodes = std::array::from_fn(|i| match i {
-            0 | 1 => Some(Inode::new(
-                0o040_755, // directory, rwxr-xr-x
-                2,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                [1, 0, 0, 0, 0, 0, 0, 0, 0],
-            )),
-            _ => None,
-        });
+impl InodeList {
+pub fn new(size: usize) -> Self {
+    let inodes: Vec<Option<Inode>> = std::iter::repeat_with(|| {
+        Some(Inode::new(
+            0o040_755, // directory, rwxr-xr-x
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ))
+    })
+    .take(2)
+    .chain(std::iter::repeat(None))
+    .take(size)
+    .collect();
 
-        Self { inodes }
+    Self {
+        size: 1024,
+        inodes,
     }
+}
 
     pub fn get(&self, index: usize) -> Option<Inode> {
         self.inodes[index]
@@ -87,8 +93,8 @@ impl<const N: usize> InodeList<N> {
     }
 }
 
-impl<const N: usize> Default for InodeList<N> {
+impl Default for InodeList {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }

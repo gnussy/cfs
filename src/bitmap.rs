@@ -1,10 +1,11 @@
 use deku::prelude::*;
 
 // TODO: make this compliant with deku (proly doing the same const slice as in inode.rs) 💃
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 pub struct Bitmap {
-    pub data: Vec<u8>,
     pub size: usize,
+    #[deku(count = "size")]
+    pub data: Vec<u8>,
 }
 
 impl Bitmap {
