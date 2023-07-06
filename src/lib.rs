@@ -54,11 +54,18 @@ impl CfsPartition {
         let blk_dev_metadata = blk_dev.metadata()?;
         let size = blk_dev_metadata.len();
         let nblocks = size / block_size;
-        let bam_blocks = nblocks + bits_per_block(block_size) - 1 / bits_per_block(block_size);
-        let inode_list_blocks = (nblocks / 4) / bits_per_block(block_size);
+        let bam_blocks = (nblocks + bits_per_block(block_size) - 1) / bits_per_block(block_size);
+        let inode_list_blocks = (nblocks) / bits_per_block(block_size);
         let ninodes = inode_list_blocks * bits_per_block(block_size);
         let iam_blocks = (ninodes + bits_per_block(block_size) - 1) / bits_per_block(block_size);
-        //let data_start = RESERVED_BLOCKS + bam_blocks + iam_blocks + inode_list_blocks;
+
+        dbg!(block_size);
+        dbg!(size);
+        dbg!(nblocks);
+        dbg!(bam_blocks);
+        dbg!(inode_list_blocks);
+        dbg!(ninodes);
+        dbg!(iam_blocks);
 
         // Super block
         let super_block = superblock::SuperBlock::new(
@@ -96,6 +103,13 @@ impl CfsPartition {
         let buffer = self.cfs.to_bytes()?;
         self.blk_dev.write_all(&buffer)?;
         Ok(())
+    }
+}
+
+// 💨
+impl Drop for CfsPartition {
+    fn drop(&mut self) {
+        self.blk_dev.sync_all().unwrap();
     }
 }
 

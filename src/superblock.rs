@@ -10,6 +10,7 @@ pub struct SuperBlock {
     pub inode_blocks: u32,
     pub nblocks: u32,
     pub ninodes: u32,
+    pub padding: [u8; 484],
 }
 
 impl SuperBlock {
@@ -30,6 +31,7 @@ impl SuperBlock {
             inode_blocks,
             nblocks,
             ninodes,
+            padding: [0; 484],
         }
     }
 }
