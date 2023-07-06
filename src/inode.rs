@@ -62,7 +62,7 @@ pub struct InodeList {
 }
 
 impl InodeList {
-    pub fn new() -> Self {
+    pub fn new(size: usize) -> Self {
         let root_inode = Inode::new(
             0o040_755, // directory, rwxr-xr-x
             0,         // We'll add root dentries later
@@ -77,7 +77,8 @@ impl InodeList {
 
         // This is a hack to get the root inode in the right place, so we don't
         // have to do arithmetic when indexing the inode list.
-        let inodes = vec![Inode::default(), root_inode];
+        let mut inodes = vec![Inode::default(), root_inode];
+        inodes.resize(size, Inode::default());
 
         Self { inodes }
     }
@@ -97,6 +98,6 @@ impl InodeList {
 
 impl Default for InodeList {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }

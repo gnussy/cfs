@@ -24,6 +24,20 @@ pub trait Bitmap {
         let data = self.get_data();
         data[byte] & (1 << bit) != 0
     }
+
+    fn first_free(&mut self) -> Option<usize> {
+        let data = self.get_data();
+        for (byte_index, byte) in data.iter().enumerate() {
+            if *byte != 0xff {
+                for bit_index in 0..8 {
+                    if byte & (1 << bit_index) == 0 {
+                        return Some(byte_index * 8 + bit_index);
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite, Clone)]

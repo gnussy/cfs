@@ -1,4 +1,8 @@
-use std::io::{Read, Seek, Write};
+use std::{
+    io::{Read, Seek, Write},
+    os::unix::prelude::{MetadataExt, PermissionsExt},
+    time::UNIX_EPOCH,
+};
 
 use deku::prelude::*;
 
@@ -22,11 +26,19 @@ impl CfsPartition {
         let blk_dev_metadata = blk_dev.metadata()?;
         let size = blk_dev_metadata.len();
         let nblocks = size / block_size;
-        let bam_blocks = (nblocks + bits_per_block(block_size) - 1) / bits_per_block(block_size);
-        let inode_list_blocks = (nblocks) / bits_per_block(block_size);
-        let ninodes = inode_list_blocks * bits_per_block(block_size);
-        let iam_blocks = (ninodes + bits_per_block(block_size) - 1) / bits_per_block(block_size);
+        let bits_per_block = bits_per_block(block_size);
 
+        let bam_blocks = (nblocks + bits_per_block - 1) / bits_per_block;
+
+        let inode_size = std::mem::size_of::<inode::Inode>() as u64;
+        let inodes_per_block = block_size / inode_size;
+        let ninodes = (nblocks / 4096) * inodes_per_block;
+
+        let iam_blocks = (ninodes + bits_per_block - 1) / bits_per_block;
+
+        let inode_list_blocks = (ninodes * inode_size + block_size - 1) / block_size;
+
+        log::debug!("inodes_per_block: {inodes_per_block}");
         log::debug!("block_size: {block_size}");
         log::debug!("size: {size}");
         log::debug!("nblocks: {nblocks}");
@@ -58,8 +70,17 @@ impl CfsPartition {
         iam.set(0);
         iam.set(1);
 
+        log::debug!(
+            "ninodes * std::mem::size_of::<inode::Inode>() = {}",
+            ninodes * std::mem::size_of::<inode::Inode>() as u64
+        );
+
         // Inode List - Allocate the first inode for the root directory
-        let inode_list = inode::InodeList::new();
+        let inode_list = inode::InodeList::new(ninodes as usize);
+
+        // tthe total number of blocks used by the CFS
+        let total_blocks = 1 + bam_blocks + iam_blocks + inode_list_blocks;
+        log::debug!("total_blocks: {total_blocks}");
 
         // Create the CFS
         let cfs = Cfs::new(super_block, bam, iam, inode_list);
@@ -70,6 +91,7 @@ impl CfsPartition {
     // serialize the CFS to the block device
     pub fn write_cfs(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let buffer = self.cfs.to_bytes()?;
+        log::debug!("I shat therefore I am");
         self.blk_dev.seek(std::io::SeekFrom::Start(0))?;
         self.blk_dev.write_all(&buffer)?;
         Ok(())
@@ -77,13 +99,14 @@ impl CfsPartition {
 
     pub fn add_dentry_to_inode(
         &mut self,
-        inode_idx: usize,
+        parent_inode_idx: usize,
         dentry_name: &str,
+        inode_idx: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // a dentry_name must be at most [u8; 60]
         let dentry_name = utils::str_to_u8_60(dentry_name);
         let dentry = dir_entry::DirEntry::new(dentry_name, inode_idx as u32);
-        let mut inode = self.cfs.inode_list.get(inode_idx);
+        let mut inode = self.cfs.inode_list.get(parent_inode_idx);
         let nchildren = inode.nchildren;
 
         // now that we have the inode, we can write the dentries to the inode.blkaddr, we must
@@ -116,13 +139,143 @@ impl CfsPartition {
 
         // update the inode
         inode.nchildren += 1;
-        self.cfs.inode_list.set(inode_idx, inode);
+        self.cfs.inode_list.set(parent_inode_idx, inode);
 
         // debug all related values
 
         self.write_cfs()?;
 
         Ok(())
+    }
+
+    pub fn add_file_to_inode(
+        &mut self,
+        parent_inode_idx: usize,
+        name: &str,
+        file: &mut std::fs::File,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let metadata: std::fs::Metadata = file.metadata()?;
+        let size = metadata.len();
+        let fmode = metadata.permissions().mode();
+        let uid = metadata.uid();
+        let gid = metadata.gid();
+        let atime = metadata.accessed()?;
+        let mtime = metadata.modified()?;
+        let ctime = metadata.created()?;
+
+        // we need to allocate a new inode for the file
+        let inode_idx = match self.cfs.iam.first_free() {
+            Some(inode_idx) => {
+                self.cfs.iam.set(inode_idx);
+                inode_idx
+            }
+            None => {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "No free inodes",
+                )));
+            }
+        };
+
+        // we need to allocate the file data blocks
+        // NOTE: No time for indirect blocks
+        let nblocks = (size as f64 / self.cfs.super_block.blocksize as f64).ceil() as usize;
+        let mut blkaddr = [0; 10];
+        for i in 0..nblocks + 1 {
+            if let Some(block_idx) = self.cfs.bam.first_free() {
+                self.cfs.bam.set(block_idx);
+                blkaddr[i] = block_idx as u32;
+                log::debug!("blkaddr[i]: {}", blkaddr[i]);
+            } else {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "No free blocks",
+                )));
+            }
+        }
+
+        // now we need to write the file data to the blocks
+        // Remember that the first block in inode.blkaddr is reserved for the dentries
+        let mut buffer = vec![0; self.cfs.super_block.blocksize as usize];
+        for i in 1..=nblocks {
+            // read the block into the buffer
+            let offset = (self.cfs.data_blocks_offset() + blkaddr[i] as u64)
+                * self.cfs.super_block.blocksize as u64;
+            self.blk_dev.seek(std::io::SeekFrom::Start(offset))?;
+            self.blk_dev.read_exact(&mut buffer)?;
+
+            // write the file data to the buffer
+            let n = file.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
+
+            // write the buffer back to the file
+            self.blk_dev.seek(std::io::SeekFrom::Start(offset))?;
+            self.blk_dev.write_all(&buffer)?;
+        }
+
+        // now we need to create the inode
+        let inode = inode::Inode::new(
+            fmode as u16,
+            0,
+            uid as u16,
+            gid as u16,
+            size as u32,
+            atime.duration_since(UNIX_EPOCH)?.as_secs() as u32,
+            mtime.duration_since(UNIX_EPOCH)?.as_secs() as u32,
+            ctime.duration_since(UNIX_EPOCH)?.as_secs() as u32,
+            blkaddr,
+        );
+        self.cfs.inode_list.set(inode_idx, inode);
+
+        // add dentry to parent inode
+        log::debug!("parent_inode_idx: {}", parent_inode_idx);
+        log::debug!("name: {}", name);
+        log::debug!("inode_idx: {}", inode_idx);
+        self.add_dentry_to_inode(parent_inode_idx, name, inode_idx)?;
+
+        Ok(())
+    }
+
+    // This function is used ub the same way as add_file_to_inode
+    // but it just add a directory instead of a file
+    pub fn add_dir_to_inode(
+        &mut self,
+        parent_inode_idx: usize,
+        name: &str,
+        file: &mut std::fs::File,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        todo!()
+    }
+
+    // This function is used to get the file data from the inode data blocks
+    pub fn get_file_from_inode(
+        &mut self,
+        parent_inode_idx: usize,
+        name: &str,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        todo!()
+    }
+
+    // This function will delete a dentry from the inode,
+    // and also delete the inode
+    pub fn remove_dentry_from_inode(
+        &mut self,
+        parent_inode_idx: usize,
+        name: &str, /* NOTE: should we use the inode_idx instead of the name? */
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        todo!()
+    }
+
+    pub fn list_dentries_from_inode(
+        &mut self,
+        parent_inode_idx: usize,
+    ) -> Result<
+        Vec<dir_entry::DirEntry>, /* Or perhaps Vec<(String, u32)>?*/
+        Box<dyn std::error::Error>,
+    > {
+        todo!()
     }
 }
 
