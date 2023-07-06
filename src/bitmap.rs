@@ -1,35 +1,69 @@
+use crate::superblock;
 use deku::prelude::*;
 
-// TODO: make this compliant with deku (proly doing the same const slice as in inode.rs) 💃
+pub trait Bitmap {
+    fn get_data(&mut self) -> &mut [u8];
+
+    fn set(&mut self, index: usize) {
+        let byte = index / 8;
+        let bit = index % 8;
+        let data = self.get_data();
+        data[byte] |= 1 << bit;
+    }
+
+    fn clear(&mut self, index: usize) {
+        let byte = index / 8;
+        let bit = index % 8;
+        let data = self.get_data();
+        data[byte] &= !(1 << bit);
+    }
+
+    fn get(&mut self, index: usize) -> bool {
+        let byte = index / 8;
+        let bit = index % 8;
+        let data = self.get_data();
+        data[byte] & (1 << bit) != 0
+    }
+}
+
 #[derive(Debug, PartialEq, DekuRead, DekuWrite, Clone)]
-pub struct Bitmap {
-    pub size: usize,
-    #[deku(count = "size")]
+#[deku(ctx = "super_block: superblock::SuperBlock")]
+pub struct Bam {
+    #[deku(count = "super_block.bam_blocks * super_block.blocksize")]
     pub data: Vec<u8>,
 }
 
-impl Bitmap {
+impl Bam {
     pub fn new(size: usize) -> Self {
         let mut data = Vec::new();
         data.resize(size, 0);
-        Self { data, size }
+        Self { data }
     }
+}
 
-    pub fn set(&mut self, index: usize) {
-        let byte = index / 8;
-        let bit = index % 8;
-        self.data[byte] |= 1 << bit;
+impl Bitmap for Bam {
+    fn get_data(&mut self) -> &mut [u8] {
+        &mut self.data
     }
+}
 
-    pub fn clear(&mut self, index: usize) {
-        let byte = index / 8;
-        let bit = index % 8;
-        self.data[byte] &= !(1 << bit);
+#[derive(Debug, PartialEq, DekuRead, DekuWrite, Clone)]
+#[deku(ctx = "super_block: superblock::SuperBlock")]
+pub struct Iam {
+    #[deku(count = "super_block.bam_blocks * super_block.blocksize")]
+    pub data: Vec<u8>,
+}
+
+impl Iam {
+    pub fn new(size: usize) -> Self {
+        let mut data = Vec::new();
+        data.resize(size, 0);
+        Self { data }
     }
+}
 
-    pub fn get(&self, index: usize) -> bool {
-        let byte = index / 8;
-        let bit = index % 8;
-        self.data[byte] & (1 << bit) != 0
+impl Bitmap for Iam {
+    fn get_data(&mut self) -> &mut [u8] {
+        &mut self.data
     }
 }
