@@ -7,7 +7,7 @@ pub const ROOT_INODE: u32 = 1;
 #[derive(Debug, Copy, Clone, PartialEq, DekuRead, DekuWrite)]
 pub struct Inode {
     pub mode: u16,
-    pub nlinks: u16,
+    pub nchildren: u16,
     pub uid: u16,
     pub gid: u16,
     pub size: u32,
@@ -20,7 +20,7 @@ pub struct Inode {
 impl Inode {
     pub(crate) fn new(
         mode: u16,
-        nlinks: u16,
+        nchildren: u16,
         uid: u16,
         gid: u16,
         size: u32,
@@ -31,7 +31,7 @@ impl Inode {
     ) -> Self {
         Self {
             mode,
-            nlinks,
+            nchildren,
             uid,
             gid,
             size,
@@ -50,17 +50,7 @@ impl Inode {
 
 impl Default for Inode {
     fn default() -> Self {
-        Self::new(
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            [0; 10],
-        )
+        Self::new(0, 0, 0, 0, 0, 0, 0, 0, [0; 10])
     }
 }
 
@@ -75,7 +65,7 @@ impl InodeList {
     pub fn new() -> Self {
         let root_inode = Inode::new(
             0o040_755, // directory, rwxr-xr-x
-            0, // We'll add root dentries later
+            0,         // We'll add root dentries later
             0,
             0,
             0,
@@ -85,6 +75,8 @@ impl InodeList {
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         );
 
+        // This is a hack to get the root inode in the right place, so we don't
+        // have to do arithmetic when indexing the inode list.
         let inodes = vec![Inode::default(), root_inode];
 
         Self { inodes }
