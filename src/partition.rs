@@ -1,6 +1,6 @@
 use std::io::{Read, Seek, Write};
 
-use deku::DekuContainerWrite;
+use deku::prelude::*;
 
 use crate::{
     bitmap::{self, Bitmap},
@@ -70,6 +70,7 @@ impl CfsPartition {
     // serialize the CFS to the block device
     pub fn write_cfs(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let buffer = self.cfs.to_bytes()?;
+        self.blk_dev.seek(std::io::SeekFrom::Start(0))?;
         self.blk_dev.write_all(&buffer)?;
         Ok(())
     }
@@ -91,8 +92,8 @@ impl CfsPartition {
         // 2. The rest of the blocks are for the data
 
         // read inode.blkaddr[0] into a buffer
-        let offset = self.cfs.data_blocks_offset()
-            + inode.blkaddr[0] as u64 * self.cfs.super_block.blocksize as u64;
+        let offset = (self.cfs.data_blocks_offset() + inode.blkaddr[0] as u64)
+            * self.cfs.super_block.blocksize as u64;
         self.blk_dev.seek(std::io::SeekFrom::Start(offset))?;
         let mut buffer = vec![0; self.cfs.super_block.blocksize as usize];
         self.blk_dev.read_exact(&mut buffer)?;
@@ -106,13 +107,12 @@ impl CfsPartition {
         buffer[dentry_offset..dentry_offset + dentry_data.len()].copy_from_slice(&dentry_data);
 
         // write the buffer back to the file
-        self.blk_dev.seek(std::io::SeekFrom::Start(
-            offset * self.cfs.super_block.blocksize as u64,
-        ))?;
+        self.blk_dev.seek(std::io::SeekFrom::Start(offset))?;
         self.blk_dev.write_all(&buffer)?;
 
-        log::debug!("offset * self.cfs.super_block.blocksize: {}", offset * self.cfs.super_block.blocksize as u64);
+        log::debug!("offset * self.cfs.super_block.blocksize: {}", offset);
         log::debug!("dentry_offset: {dentry_offset}");
+        log::debug!("dentry_data.len(): {}", dentry_data.len());
 
         // update the inode
         inode.nchildren += 1;
