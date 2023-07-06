@@ -48,7 +48,7 @@ impl Inode {
     }
 }
 
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, DekuRead, DekuWrite, Clone)]
 #[deku(ctx = "super_block: superblock::SuperBlock")]
 pub struct InodeList {
     #[deku(count = "super_block.ninodes")]
@@ -57,22 +57,19 @@ pub struct InodeList {
 
 impl InodeList {
     pub fn new() -> Self {
-        let inodes: Vec<Option<Inode>> = std::iter::repeat_with(|| {
-            Some(Inode::new(
-                0o040_755, // directory, rwxr-xr-x
-                2,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            ))
-        })
-        .take(2)
-        .chain(std::iter::repeat(None))
-        .collect();
+        let root_inode = Inode::new(
+            0o040_755, // directory, rwxr-xr-x
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+
+        let inodes = vec![Some(root_inode), Some(root_inode)];
 
         Self { inodes }
     }

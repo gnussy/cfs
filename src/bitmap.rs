@@ -1,7 +1,7 @@
 use deku::prelude::*;
 
 // TODO: make this compliant with deku (proly doing the same const slice as in inode.rs) 💃
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, DekuRead, DekuWrite, Clone)]
 pub struct Bitmap {
     pub size: usize,
     #[deku(count = "size")]
@@ -31,9 +31,5 @@ impl Bitmap {
         let byte = index / 8;
         let bit = index % 8;
         self.data[byte] & (1 << bit) != 0
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        self.data.clone()
     }
 }
