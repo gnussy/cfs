@@ -5,7 +5,7 @@ pub mod superblock;
 
 use bitmap::Bitmap;
 use deku::prelude::*;
-use std::io::Write;
+use std::io::{Read, Seek, Write};
 
 pub const MAGIC: u32 = 0x0CF5B10C;
 pub const DEFAULT_BLOCK_SIZE: usize = 4096;
@@ -38,6 +38,31 @@ impl Cfs {
             iam,
             inode_list,
         }
+    }
+
+    pub fn super_block_offset(&self) -> u64 {
+        0
+    }
+
+    pub fn bam_offset(&self) -> u64 {
+        self.super_block.blocksize as u64 * RESERVED_BLOCKS
+    }
+
+    pub fn iam_offset(&self) -> u64 {
+        self.super_block.blocksize as u64 * RESERVED_BLOCKS + self.super_block.bam_blocks as u64
+    }
+
+    pub fn inode_list_offset(&self) -> u64 {
+        self.super_block.blocksize as u64 * RESERVED_BLOCKS
+            + self.super_block.bam_blocks as u64
+            + self.super_block.iam_blocks as u64
+    }
+
+    pub fn data_blocks_offset(&self) -> u64 {
+        self.super_block.blocksize as u64 * RESERVED_BLOCKS
+            + self.super_block.bam_blocks as u64
+            + self.super_block.iam_blocks as u64
+            + self.super_block.inode_blocks as u64
     }
 }
 
@@ -84,7 +109,8 @@ impl CfsPartition {
         bam.set(0);
 
         // IAM - Allocate a bitmap with the first inode occupied by the root directory
-        // and all other inodes free
+        // Inode 0 is reserved
+        // Inode 1 is the root directory
         let mut iam = bitmap::Iam::new(iam_blocks as usize * block_size as usize);
         iam.set(0);
         iam.set(1);
@@ -104,6 +130,55 @@ impl CfsPartition {
         self.blk_dev.write_all(&buffer)?;
         Ok(())
     }
+
+    pub fn add_dentry_to_inode(
+        &mut self,
+        inode_idx: usize,
+        dentry_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // denty_name must be [u8; 60]
+        let dentry_name = str_to_u8_60(dentry_name);
+        let dentry = dir_entry::DirEntry::new(dentry_name, inode_idx as u32);
+        let mut inode = self.cfs.inode_list.get(inode_idx);
+        let nchildren = inode.nlinks;
+        // now we have the inode, we can write the dentries to the inode.blkaddr
+        // The first block in inode.blkaddr is reserved for the dentries
+        // The rest of the blocks are for the data
+
+        //read inode.blkaddr[0] into a buffer
+        let offset = self.cfs.data_blocks_offset()
+            + inode.blkaddr[0] as u64 * self.cfs.super_block.blocksize as u64;
+        self.blk_dev.seek(std::io::SeekFrom::Start(offset))?;
+        let mut buffer = vec![0; self.cfs.super_block.blocksize as usize];
+        self.blk_dev.read_exact(&mut buffer)?;
+
+        // inode.nlinks is the number of dentries in the first block, so we need to
+        // write to the next available dentry
+        let dentry_offset = nchildren as usize * std::mem::size_of::<dir_entry::DirEntry>();
+        let dentry_data = dentry.to_bytes()?;
+
+        // write the dentry to the buffer
+        buffer[dentry_offset..dentry_offset + dentry_data.len()].copy_from_slice(&dentry_data);
+
+        // write the buffer back to the file
+        self.blk_dev.seek(std::io::SeekFrom::Start(
+            offset * self.cfs.super_block.blocksize as u64,
+        ))?;
+        self.blk_dev.write_all(&buffer)?;
+
+        dbg!(offset * self.cfs.super_block.blocksize as u64);
+        dbg!(dentry_offset);
+
+        // update the inode
+        inode.nlinks += 1;
+        self.cfs.inode_list.set(inode_idx, inode);
+
+        // debug all related values
+
+        self.write_cfs()?;
+
+        Ok(())
+    }
 }
 
 // 💨
@@ -117,4 +192,13 @@ impl Drop for CfsPartition {
 #[inline(always)]
 pub fn bits_per_block(block_size: u64) -> u64 {
     block_size * 8
+}
+
+pub fn str_to_u8_60(s: &str) -> [u8; 60] {
+    let mut a = [0; 60];
+    let bytes = s.as_bytes();
+    for i in 0..bytes.len() {
+        a[i] = bytes[i];
+    }
+    a
 }
