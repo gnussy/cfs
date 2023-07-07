@@ -1,6 +1,6 @@
 [package]
 name = "cfs"
-description = "Complex FileSystem userspace libray"
+description = "Complex FileSystem userspace library"
 license = "MIT"
 homepage = "https://github.com/gnussy/cfs"
 repository = "https://github.com/gnussy/cfs"
