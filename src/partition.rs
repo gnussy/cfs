@@ -257,11 +257,65 @@ impl CfsPartition {
     // but it just add a directory instead of a file
     pub fn add_dir_to_inode(
         &mut self,
-        _parent_inode_idx: usize,
-        _name: &str,
-        _file: &mut std::fs::File,
+        parent_inode_idx: usize,
+        name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
+        let size = 0;
+        let fmode = 0o755;
+        let uid = std::process::id();
+        let gid = std::process::id();
+        let atime = std::time::SystemTime::now();
+        let mtime = atime;
+        let ctime = atime;
+
+        // we need to allocate a new inode for the uppcomming directory
+        let inode_idx = match self.cfs.iam.first_free() {
+            Some(inode_idx) => {
+                self.cfs.iam.set(inode_idx);
+                inode_idx
+            }
+            None => {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "No free inodes",
+                )));
+            }
+        };
+
+        // The dir does not have any data blocks, so we just set the blkaddr to 0
+        let mut blkaddr = [0; 10];
+        if let Some(block_idx) = self.cfs.bam.first_free() {
+            self.cfs.bam.set(block_idx);
+            blkaddr[0] = block_idx as u32;
+            log::debug!("blkaddr[0]: {}", blkaddr[0]);
+        } else {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "No free blocks",
+            )));
+        }
+
+        // now we need to create the inode
+        let inode = inode::Inode::new(
+            fmode as u16,
+            0,
+            uid as u16,
+            gid as u16,
+            size as u32,
+            atime.duration_since(UNIX_EPOCH)?.as_secs() as u32,
+            mtime.duration_since(UNIX_EPOCH)?.as_secs() as u32,
+            ctime.duration_since(UNIX_EPOCH)?.as_secs() as u32,
+            blkaddr,
+        );
+        self.cfs.inode_list.set(inode_idx, inode);
+
+        // add dentry to parent inode
+        log::debug!("parent_inode_idx: {}", parent_inode_idx);
+        log::debug!("name: {}", name);
+        log::debug!("inode_idx: {}", inode_idx);
+        self.add_dentry_to_inode(parent_inode_idx, name, inode_idx)?;
+
+        Ok(())
     }
 
     // This function is used to get the file data from the inode data blocks
