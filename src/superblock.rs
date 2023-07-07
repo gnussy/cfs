@@ -1,7 +1,7 @@
 use deku::prelude::*;
 
 // I've broken my rules of no Clones... 🕺
-#[derive(Debug, PartialEq, DekuRead, DekuWrite, Copy, Clone)]
+#[derive(Debug, PartialEq, DekuRead, DekuWrite, Clone)]
 pub struct SuperBlock {
     pub magic: u32,
     pub blocksize: u32,
@@ -10,7 +10,8 @@ pub struct SuperBlock {
     pub inode_blocks: u32,
     pub nblocks: u32,
     pub ninodes: u32,
-    pub padding: [u8; 484],
+    #[deku(count = "*blocksize - 28")]
+    pub padding: Vec<u8>,
 }
 
 impl SuperBlock {
@@ -31,7 +32,7 @@ impl SuperBlock {
             inode_blocks,
             nblocks,
             ninodes,
-            padding: [0; 484],
+            padding: vec![0; (blocksize - 28) as usize],
         }
     }
 }

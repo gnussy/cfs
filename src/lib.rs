@@ -22,11 +22,11 @@ pub fn init_library_logger() {
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 pub struct Cfs {
     super_block: superblock::SuperBlock,
-    #[deku(ctx = "*super_block")]
+    #[deku(ctx = "super_block.clone()")]
     bam: bitmap::Bam,
-    #[deku(ctx = "*super_block")]
+    #[deku(ctx = "super_block.clone()")]
     iam: bitmap::Iam,
-    #[deku(ctx = "*super_block")]
+    #[deku(ctx = "super_block.clone()")]
     inode_list: inode::InodeList,
 }
 
@@ -54,19 +54,15 @@ impl Cfs {
     }
 
     pub fn iam_offset(&self) -> u64 {
-        self.super_block.blocksize as u64 * RESERVED_BLOCKS + self.super_block.bam_blocks as u64
+        self.bam_offset() + (self.super_block.bam_blocks as u64 * self.super_block.blocksize as u64)
     }
 
     pub fn inode_list_offset(&self) -> u64 {
-        self.super_block.blocksize as u64 * RESERVED_BLOCKS
-            + self.super_block.bam_blocks as u64
-            + self.super_block.iam_blocks as u64
+        self.iam_offset() + (self.super_block.iam_blocks as u64 * self.super_block.blocksize as u64)
     }
 
     pub fn data_blocks_offset(&self) -> u64 {
-        self.super_block.blocksize as u64 * RESERVED_BLOCKS
-            + self.super_block.bam_blocks as u64
-            + self.super_block.iam_blocks as u64
-            + self.super_block.inode_blocks as u64
+        self.inode_list_offset()
+            + (self.super_block.inode_blocks as u64 * self.super_block.blocksize as u64)
     }
 }
