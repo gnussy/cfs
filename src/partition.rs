@@ -319,32 +319,132 @@ impl CfsPartition {
     }
 
     // This function is used to get the file data from the inode data blocks
-    pub fn get_file_from_inode(
+    pub fn get_data_from_inode(
         &mut self,
-        _parent_inode_idx: usize,
-        _name: &str,
+        inode_idx: usize,
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        todo!()
+        // get the inode from the inode list
+        let inode = self.cfs.inode_list.get(inode_idx);
+
+        log::debug!("inode: {:?}", inode);
+
+        // the number of blocks that the file is using (ceil(size / blocksize)
+        let size = (inode.size as f64 / self.cfs.super_block.blocksize as f64).ceil() as u32;
+        log::debug!("size: {}", size);
+
+        // the buffer that we will read the file data into
+        let mut buffer = vec![0; inode.size as usize];
+
+        let mut ret = Vec::new();
+
+        // read the data blocks into the buffer
+        for i in 1..=size {
+            // read the block into the buffer
+            let offset = self.cfs.data_blocks_offset()
+                + (inode.blkaddr[i as usize] as u64 * self.cfs.super_block.blocksize as u64);
+            self.blk_dev.seek(std::io::SeekFrom::Start(offset))?;
+            self.blk_dev.read_exact(&mut buffer)?;
+            ret.extend_from_slice(&buffer);
+        }
+
+        Ok(ret)
+    }
+
+    pub fn remove_inode(&mut self, inode_idx: usize) -> Result<(), Box<dyn std::error::Error>> {
+        // get the inode from the inode list
+        let inode = self.cfs.inode_list.get(inode_idx);
+
+        // free the inode
+        self.cfs.iam.clear(inode_idx);
+        self.cfs.inode_list.clear(inode_idx);
+
+        // free the data blocks that the inode points to
+        let nblocks = inode.size / self.cfs.super_block.blocksize as u32;
+        for i in 0..nblocks {
+            self.cfs.bam.clear(inode.blkaddr[i as usize] as usize);
+        }
+
+        self.write_cfs()?;
+
+        Ok(())
     }
 
     // This function will delete a dentry from the inode,
     // and also delete the inode
-    pub fn remove_dentry_from_inode(
+    pub fn remove_dir_from_inode(
         &mut self,
-        _parent_inode_idx: usize,
-        _name: &str, /* NOTE: should we use the inode_idx instead of the name? */
+        parent_inode_idx: usize,
+        inode_idx: u32,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
+        let dentries = self.list_dentries_from_inode(parent_inode_idx)?;
+
+        // find the dentry that we want to remove, filter it, and map it to a new vector, and map it to a new vector of u8s,
+        // and then write it to the data block
+
+        let mut buffer: Vec<u8> = dentries
+            .into_iter()
+            .filter(|x| x.inode != inode_idx)
+            .map(|x| x.to_bytes())
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // pad the buffer with 0s
+        buffer.resize(
+            self.cfs.super_block.blocksize as usize,
+            std::convert::From::from(0),
+        );
+
+        // write the dentries to the data block
+        let inode = self.cfs.inode_list.get(parent_inode_idx);
+        let data_block_idx = inode.blkaddr[0] as usize;
+        let index = self.cfs.data_blocks_offset()
+            + data_block_idx as u64 * self.cfs.super_block.blocksize as u64;
+        std::io::Seek::seek(&mut self.blk_dev, std::io::SeekFrom::Start(index))?;
+        std::io::Write::write_all(&mut self.blk_dev, &mut buffer)?;
+
+        // remove the inode
+        self.remove_inode(inode_idx as usize)?;
+        Ok(())
     }
 
     pub fn list_dentries_from_inode(
         &mut self,
-        _parent_inode_idx: usize,
+        parent_inode_idx: usize,
     ) -> Result<
         Vec<dir_entry::DirEntry>, /* Or perhaps Vec<(String, u32)>?*/
         Box<dyn std::error::Error>,
     > {
-        todo!()
+        // get the inode from the inode list
+        let inode = self.cfs.inode_list.get(parent_inode_idx);
+
+        // the dentrty is stored in the inode data block 0
+        let data_block_idx = inode.blkaddr[0] as usize;
+        log::debug!("data_block_idx: {}", data_block_idx);
+        let index = self.cfs.data_blocks_offset()
+            + data_block_idx as u64 * self.cfs.super_block.blocksize as u64;
+        let mut buf = vec![0; self.cfs.super_block.blocksize as usize];
+
+        // seek and read the data block
+        std::io::Seek::seek(&mut self.blk_dev, std::io::SeekFrom::Start(index as u64))?;
+        std::io::Read::read_exact(&mut self.blk_dev, &mut buf)?;
+
+        // the nunmber of dentries in the data block is in inode.nchildren
+        let nchildren = inode.nchildren as usize;
+
+        // convert the buffer to a vector of dentries
+        let dentries = buf
+            .chunks_exact(std::mem::size_of::<dir_entry::DirEntry>())
+            .to_owned()
+            .take(nchildren)
+            .map(|chunk| {
+                dir_entry::DirEntry::try_from(chunk)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            })
+            .collect::<Result<Vec<dir_entry::DirEntry>, _>>()?;
+
+        Ok(dentries)
     }
 
     pub fn setup_root_dir(&mut self) -> Result<(), Box<dyn std::error::Error>> {
