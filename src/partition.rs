@@ -10,7 +10,7 @@ use crate::{
     bitmap::{self, Bitmap},
     dir_entry, inode, superblock,
     utils::{self, bits_per_block},
-    Cfs, MAGIC,
+    Cfs, DEFAULT_BLOCK_SIZE, MAGIC,
 };
 
 pub struct CfsPartition {
@@ -471,8 +471,10 @@ impl TryFrom<std::fs::File> for CfsPartition {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(mut blk_dev: std::fs::File) -> Result<Self, Self::Error> {
-        let mut buffer = Vec::new();
-        blk_dev.read_to_end(&mut buffer)?;
+        let mut buffer = vec![0; DEFAULT_BLOCK_SIZE as usize];
+        blk_dev.seek(std::io::SeekFrom::Start(0))?;
+        blk_dev.read_exact(&mut buffer)?;
+        blk_dev.seek(std::io::SeekFrom::Start(0))?;
 
         let (_, cfs) = Cfs::from_bytes((buffer.as_ref(), 0))?;
 
