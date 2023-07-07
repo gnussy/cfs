@@ -94,6 +94,15 @@ impl CfsPartition {
         Ok(Self { blk_dev, cfs })
     }
 
+    pub fn info(&self) -> (String, String, String, String) {
+        (
+            self.cfs.bam_offset().to_string(),
+            self.cfs.iam_offset().to_string(),
+            self.cfs.inode_list_offset().to_string(),
+            self.cfs.data_blocks_offset().to_string(),
+        )
+    }
+
     // serialize the CFS to the block device
     pub fn write_cfs(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let buffer = self.cfs.to_bytes()?;
