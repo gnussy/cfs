@@ -403,12 +403,16 @@ impl CfsPartition {
         buffer.resize(self.cfs.super_block.blocksize as usize, 0);
 
         // write the dentries to the data block
-        let inode = self.cfs.inode_list.get(parent_inode_idx);
+        let mut inode = self.cfs.inode_list.get(parent_inode_idx);
         let data_block_idx = inode.blkaddr[0] as usize;
         let index = self.cfs.data_blocks_offset()
             + data_block_idx as u64 * self.cfs.super_block.blocksize as u64;
         std::io::Seek::seek(&mut self.blk_dev, std::io::SeekFrom::Start(index))?;
         std::io::Write::write_all(&mut self.blk_dev, &buffer)?;
+
+        // update the parent inode
+        inode.nchildren -= 1;
+        self.cfs.inode_list.set(parent_inode_idx, inode);
 
         // remove the inode
         self.remove_inode(inode_idx as usize)?;
