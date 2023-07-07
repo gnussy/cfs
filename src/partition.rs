@@ -359,7 +359,7 @@ impl CfsPartition {
         self.cfs.inode_list.clear(inode_idx);
 
         // free the data blocks that the inode points to
-        let nblocks = inode.size / self.cfs.super_block.blocksize as u32;
+        let nblocks = inode.size / self.cfs.super_block.blocksize;
         for i in 0..nblocks {
             self.cfs.bam.clear(inode.blkaddr[i as usize] as usize);
         }
@@ -391,10 +391,7 @@ impl CfsPartition {
             .collect();
 
         // pad the buffer with 0s
-        buffer.resize(
-            self.cfs.super_block.blocksize as usize,
-            std::convert::From::from(0),
-        );
+        buffer.resize(self.cfs.super_block.blocksize as usize, 0);
 
         // write the dentries to the data block
         let inode = self.cfs.inode_list.get(parent_inode_idx);
@@ -402,7 +399,7 @@ impl CfsPartition {
         let index = self.cfs.data_blocks_offset()
             + data_block_idx as u64 * self.cfs.super_block.blocksize as u64;
         std::io::Seek::seek(&mut self.blk_dev, std::io::SeekFrom::Start(index))?;
-        std::io::Write::write_all(&mut self.blk_dev, &mut buffer)?;
+        std::io::Write::write_all(&mut self.blk_dev, &buffer)?;
 
         // remove the inode
         self.remove_inode(inode_idx as usize)?;
@@ -427,7 +424,7 @@ impl CfsPartition {
         let mut buf = vec![0; self.cfs.super_block.blocksize as usize];
 
         // seek and read the data block
-        std::io::Seek::seek(&mut self.blk_dev, std::io::SeekFrom::Start(index as u64))?;
+        std::io::Seek::seek(&mut self.blk_dev, std::io::SeekFrom::Start(index))?;
         std::io::Read::read_exact(&mut self.blk_dev, &mut buf)?;
 
         // the nunmber of dentries in the data block is in inode.nchildren
