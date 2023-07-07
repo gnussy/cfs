@@ -1,6 +1,6 @@
 [package]
 name = "cfs"
-description = "Complex FileSystem userspace libray"
+description = "Complex FileSystem userspace library"
 license = "MIT"
 homepage = "https://github.com/gnussy/cfs"
 repository = "https://github.com/gnussy/cfs"
@@ -11,3 +11,5 @@ edition = "2021"
 
 [dependencies]
 deku = "0.16.0"
+log = "0.4"
+env_logger = "0.10"

@@ -3,13 +3,13 @@ use deku::prelude::*;
 const MAX_NAME_LEN: usize = 60;
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct DirEntry {
-    name: [u8; MAX_NAME_LEN],
-    inode: u32,
+pub struct DirEntry {
+    pub name: [u8; MAX_NAME_LEN],
+    pub inode: u32,
 }
 
 impl DirEntry {
-    fn new(name: [u8; MAX_NAME_LEN], inode: u32) -> Self {
+    pub fn new(name: [u8; MAX_NAME_LEN], inode: u32) -> Self {
         Self { name, inode }
     }
 }
