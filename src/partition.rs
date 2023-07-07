@@ -360,3 +360,16 @@ impl Drop for CfsPartition {
         self.blk_dev.sync_all().unwrap();
     }
 }
+
+impl TryFrom<std::fs::File> for CfsPartition {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(mut blk_dev: std::fs::File) -> Result<Self, Self::Error> {
+        let mut buffer = Vec::new();
+        blk_dev.read_to_end(&mut buffer)?;
+
+        let (_, cfs) = Cfs::from_bytes((buffer.as_ref(), 0))?;
+
+        Ok(CfsPartition { blk_dev, cfs })
+    }
+}
